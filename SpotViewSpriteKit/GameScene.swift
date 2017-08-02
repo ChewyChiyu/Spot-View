@@ -13,7 +13,9 @@ import FirebaseDatabase
 class GameScene: SKScene {
     
     var firebaseMasterBranch = Database.database().reference()
+    
     var isConnected: Bool = false
+    var isLaunching: Bool = true
     
     var addTableButton: Button?
     
@@ -25,6 +27,7 @@ class GameScene: SKScene {
         addTableButton = self.childNode(withName: "addTable") as? Button
         observeFirebaseConnection{ [weak self] in
             self?.loadDataFromFirebase{ [weak self] in
+                self?.isLaunching = false
                 self?.startObservers()
                 self?.addButtonActions()
             }
@@ -32,9 +35,9 @@ class GameScene: SKScene {
     }
     
     func loadDataFromFirebase(andOnCompletion completion:@escaping ()->()){
-        guard isConnected else { return }
+        if !isConnected { completion() }
         firebaseMasterBranch.observeSingleEvent(of: .value, with: { snapshot in
-            guard snapshot.exists() else{return}
+            if !snapshot.exists() { completion() }
             let enumerator = snapshot.children
             while let rest = enumerator.nextObject() as? DataSnapshot {
                 var reloadPackage = DataPackage<Any>()
@@ -59,18 +62,24 @@ class GameScene: SKScene {
         connectedRef.observe(.value, with: { (connected) in
             if let boolean = connected.value as? Bool, boolean == true {
                 self.isConnected = true
+                self.reloadAllColors()
+                guard self.isLaunching else { return }
                 completion()
             } else {
                 self.isConnected = false
+                self.turnAllNodesGrey()
+                guard self.isLaunching else { return }
                 completion()
             }
         })
+        
     }
     
     func startObservers(){
         guard isConnected else { return }
         firebaseMasterBranch.observe(.value, with: {snapshot in
-            guard snapshot.exists() else{return}
+            guard self.isConnected else { return }
+            guard snapshot.exists() else{ return }
             let enumerations = snapshot.children
             while let rest = enumerations.nextObject() as? DataSnapshot{
                 var newPackage = DataPackage<Any>()
@@ -116,11 +125,30 @@ class GameScene: SKScene {
     
     func addButtonActions(){
         addTableButton?.playAction = { [weak self] in
-            let table = Table(position: (self?.addTableButton?.position)!, id: String(Date().toMillis()))
-            table.colorBlendFactor = 0
-            self?.addChild(table)
+            if (self?.isConnected)! {
+                let table = Table(position: (self?.addTableButton?.position)!, id: String(Date().toMillis()))
+                table.colorBlendFactor = 0
+                self?.addChild(table)
+            }
         }
     }
+    
+    func turnAllNodesGrey(){
+        for child in self.children{
+            if let tableNode = child as? Table{
+                tableNode.color = UIColor.gray
+            }
+        }
+    }
+    
+    func reloadAllColors(){
+        for child in self.children{
+            if let tableNode = child as? Table{
+                tableNode.color = (tableNode.isGreen)! ? UIColor.green : UIColor.red
+            }
+        }
+    }
+    
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard isConnected else { return }
