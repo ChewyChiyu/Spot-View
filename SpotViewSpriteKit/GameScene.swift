@@ -18,6 +18,8 @@ class GameScene: SKScene {
     var isLaunching: Bool = true
     
     var addTableButton: Button?
+    var removeTableBin: SKSpriteNode?
+    
     
     var currentlySelectedNode: Table?
     
@@ -25,6 +27,7 @@ class GameScene: SKScene {
     
     override func didMove(to view: SKView) {
         addTableButton = self.childNode(withName: "addTable") as? Button
+        removeTableBin = self.childNode(withName: "removeTable") as? SKSpriteNode
         observeFirebaseConnection{ [weak self] in
             self?.loadDataFromFirebase{ [weak self] in
                 self?.isLaunching = false
@@ -81,9 +84,11 @@ class GameScene: SKScene {
             guard self.isConnected else { return }
             guard snapshot.exists() else{ return }
             let enumerations = snapshot.children
+            var dataIDs = [String]()
             while let rest = enumerations.nextObject() as? DataSnapshot{
                 var newPackage = DataPackage<Any>()
                 func fetchData(andOnCompletion completion:@escaping ()->()){
+                    dataIDs.append(rest.key)
                     newPackage.keyID = rest.key
                     newPackage.isGreen = rest.childSnapshot(forPath: "isGreen").value as? Bool
                     
@@ -111,7 +116,18 @@ class GameScene: SKScene {
                     }
                 }
             }
-            
+            for childNode in self.children{
+                let child = childNode as? Table
+                var tableExists: Bool = false
+                for dataID in dataIDs{
+                    if(child?.id==dataID){
+                        tableExists = true
+                    }
+                }
+                if(!tableExists){
+                    child?.removeFromParent()
+                }
+            }
         })
     }
     
@@ -164,11 +180,17 @@ class GameScene: SKScene {
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard isConnected else { return }
         guard let table = currentlySelectedNode else { return }
+        if nodes(at: (touches.first?.location(in: self))!).contains(removeTableBin!){
+            firebaseMasterBranch.child((currentlySelectedNode?.id)!).removeValue()
+            firebaseMasterBranch.child("reload").setValue("reload")
+            currentlySelectedNode?.removeFromParent()
+        }else{
         table.colorBlendFactor = 1
         let newTableBranch = firebaseMasterBranch.child((table.id)!)
         newTableBranch.child("positionX").setValue(table.position.x)
         newTableBranch.child("positionY").setValue(table.position.y)
         newTableBranch.child("isGreen").setValue(table.isGreen)
+        }
     }
     
     
