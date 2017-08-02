@@ -19,15 +19,15 @@ class GameScene: SKScene {
     
     var addTableButton: Button?
     var removeTableBin: SKSpriteNode?
-    
+    var gameCamera: SKCameraNode?
     
     var currentlySelectedNode: Table?
-    
-    
     
     override func didMove(to view: SKView) {
         addTableButton = self.childNode(withName: "addTable") as? Button
         removeTableBin = self.childNode(withName: "removeTable") as? SKSpriteNode
+        gameCamera = self.childNode(withName: "camera") as? SKCameraNode
+        self.camera = gameCamera
         observeFirebaseConnection{ [weak self] in
             self?.loadDataFromFirebase{ [weak self] in
                 self?.isLaunching = false
@@ -174,7 +174,12 @@ class GameScene: SKScene {
     
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard isConnected else { return }
-        currentlySelectedNode?.position = touches.first!.location(in: self)
+        if let currentNode = currentlySelectedNode{
+        currentNode.position = touches.first!.location(in: self)
+        }else{
+            gameCamera?.run(SKAction.move(to: (touches.first?.location(in: gameCamera!))!, duration: 0.1))
+            gameCamera?.run(SKAction.moveBy(x: (touches.first?.location(in: gameCamera!).x)! * -0.1, y: (touches.first?.location(in: gameCamera!).y)!*0.1, duration: 0.1))
+        }
     }
     
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -185,15 +190,13 @@ class GameScene: SKScene {
             firebaseMasterBranch.child("reload").setValue("reload")
             currentlySelectedNode?.removeFromParent()
         }else{
-        table.colorBlendFactor = 1
-        let newTableBranch = firebaseMasterBranch.child((table.id)!)
-        newTableBranch.child("positionX").setValue(table.position.x)
-        newTableBranch.child("positionY").setValue(table.position.y)
-        newTableBranch.child("isGreen").setValue(table.isGreen)
+            table.colorBlendFactor = 1
+            let newTableBranch = firebaseMasterBranch.child((table.id)!)
+            newTableBranch.child("positionX").setValue(table.position.x)
+            newTableBranch.child("positionY").setValue(table.position.y)
+            newTableBranch.child("isGreen").setValue(table.isGreen)
         }
     }
-    
-    
 }
 
 
