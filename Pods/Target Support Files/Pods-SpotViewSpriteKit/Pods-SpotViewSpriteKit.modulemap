@@ -1,0 +1,6 @@
+framework module Pods_SpotViewSpriteKit {
+  umbrella header "Pods-SpotViewSpriteKit-umbrella.h"
+
+  export *
+  module * { export * }
+}
