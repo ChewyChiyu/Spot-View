@@ -18,14 +18,16 @@ class GameScene: SKScene {
     var isLaunching: Bool = true
     
     var addTableButton: Button?
-    var removeTableBin: SKSpriteNode?
+    var addChairButton: Button?
+    var removeFurnitureBin: SKSpriteNode?
     var gameCamera: SKCameraNode?
     
-    var currentlySelectedNode: Table?
+    var currentlySelectedNode: Furniture?
     
     override func didMove(to view: SKView) {
         addTableButton = self.childNode(withName: "addTable") as? Button
-        removeTableBin = self.childNode(withName: "removeTable") as? SKSpriteNode
+        addChairButton = self.childNode(withName: "addChair") as? Button
+        removeFurnitureBin = self.childNode(withName: "removeFurniture") as? SKSpriteNode
         gameCamera = self.childNode(withName: "camera") as? SKCameraNode
         self.camera = gameCamera
         observeFirebaseConnection{ [weak self] in
@@ -47,12 +49,17 @@ class GameScene: SKScene {
                 func fetchData(andOnCompletion completion:@escaping ()->()){
                     reloadPackage.position = Position(x: rest.childSnapshot(forPath: "positionX").value!, y: rest.childSnapshot(forPath: "positionY").value!)
                     reloadPackage.isGreen = rest.childSnapshot(forPath: "isGreen").value as? Bool
+                    reloadPackage.furnitureType = rest.childSnapshot(forPath: "furnitureType").value as? String
+                    reloadPackage.parentFurnitureID = rest.childSnapshot(forPath: "parentTableID").value as? String
                     completion()
                 }
                 fetchData{
-                    let reloadedTable = Table(position: reloadPackage.compressPosition(), id: rest.key)
-                    reloadedTable.toFlipState()
-                    self.addChild(reloadedTable)
+                    let reloadedFurniture = Furniture(position: reloadPackage.compressPosition(), id: rest.key, type: reloadPackage.furnitureType!)
+                    reloadedFurniture.toFlipState()
+                    if(reloadedFurniture.type == "CHAIR"){
+                        reloadedFurniture.parentTableID = reloadPackage.parentFurnitureID
+                    }
+                    self.addChild(reloadedFurniture)
                 }
             }
             completion()
@@ -91,40 +98,48 @@ class GameScene: SKScene {
                     dataIDs.append(rest.key)
                     newPackage.keyID = rest.key
                     newPackage.isGreen = rest.childSnapshot(forPath: "isGreen").value as? Bool
-                    
+                    newPackage.furnitureType = rest.childSnapshot(forPath: "furnitureType").value as? String
                     newPackage.position =  Position(x: rest.childSnapshot(forPath: "positionX").value!, y: rest.childSnapshot(forPath: "positionY").value!)
+                    newPackage.parentFurnitureID = rest.childSnapshot(forPath: "parentTableID").value as? String
                     completion()
                 }
                 fetchData{
                     if self.validPackage(data: newPackage){
-                        var tableExists: Bool = false
+                        var furnitureExists: Bool = false
                         for childNode in self.children{
-                            let child = childNode as? Table
+                            let child = childNode as? Furniture
                             if(child?.id == newPackage.keyID){
-                                tableExists = true
+                                furnitureExists = true
                                 if(child?.isGreen != newPackage.isGreen){
                                     child?.toFlipState()
                                 }
                                 child?.position = newPackage.compressPosition()
+                                child?.type = newPackage.furnitureType
+                                if(child?.type == "CHAIR"){
+                                    child?.parentTableID = newPackage.parentFurnitureID
+                                }
                             }
                         }
-                        if(!tableExists){
-                            let newTable = Table(position: newPackage.compressPosition(), id: newPackage.keyID!)
-                            newTable.toFlipState()
-                            self.addChild(newTable)
+                        if(!furnitureExists){
+                            let newFurniture = Furniture(position: newPackage.compressPosition(), id: newPackage.keyID!, type: newPackage.furnitureType!)
+                            newFurniture.toFlipState()
+                            if(newFurniture.type == "CHAIR"){
+                                newFurniture.parentTableID = newPackage.parentFurnitureID
+                            }
+                            self.addChild(newFurniture)
                         }
                     }
                 }
             }
             for childNode in self.children{
-                let child = childNode as? Table
-                var tableExists: Bool = false
+                let child = childNode as? Furniture
+                var furnitureExists: Bool = false
                 for dataID in dataIDs{
                     if(child?.id==dataID){
-                        tableExists = true
+                        furnitureExists = true
                     }
                 }
-                if(!tableExists){
+                if(!furnitureExists){
                     child?.removeFromParent()
                 }
             }
@@ -135,6 +150,7 @@ class GameScene: SKScene {
         guard data.isGreen != nil else { return false }
         guard data.position != nil else { return false }
         guard data.keyID != nil else { return false }
+        guard data.furnitureType != nil else { return false }
         return true
     }
     
@@ -142,16 +158,23 @@ class GameScene: SKScene {
     func addButtonActions(){
         addTableButton?.playAction = { [weak self] in
             if (self?.isConnected)! {
-                let table = Table(position: (self?.addTableButton?.position)!, id: String(Date().toMillis()))
+                let table = Furniture(position: (self?.addTableButton?.position)!, id: "TABLE-\(String(Date().toMillis()))", type: "TABLE")
                 table.colorBlendFactor = 0
                 self?.addChild(table)
+            }
+        }
+        addChairButton?.playAction = { [weak self] in
+            if (self?.isConnected)! {
+                let chair = Furniture(position: (self?.addChairButton?.position)!, id: "CHAIR-\(String(Date().toMillis()))", type: "CHAIR")
+                chair.colorBlendFactor = 0
+                self?.addChild(chair)
             }
         }
     }
     
     func turnAllNodesGrey(){
         for child in self.children{
-            if let tableNode = child as? Table{
+            if let tableNode = child as? Furniture{
                 tableNode.color = UIColor.gray
             }
         }
@@ -159,7 +182,7 @@ class GameScene: SKScene {
     
     func reloadAllColors(){
         for child in self.children{
-            if let tableNode = child as? Table{
+            if let tableNode = child as? Furniture{
                 tableNode.color = (tableNode.isGreen)! ? UIColor.green : UIColor.red
             }
         }
@@ -168,14 +191,23 @@ class GameScene: SKScene {
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard isConnected else { return }
-        currentlySelectedNode = atPoint(touches.first!.location(in: self)) as? Table
+        currentlySelectedNode = atPoint(touches.first!.location(in: self)) as? Furniture
         currentlySelectedNode?.toFlipState()
+        guard currentlySelectedNode?.type == "TABLE" else { return }
+        for allFurniture in self.children{
+            if let furnitureNode = allFurniture as? Furniture{
+                if(furnitureNode.parentTableID == currentlySelectedNode?.id && furnitureNode.id != currentlySelectedNode?.id){
+                    furnitureNode.isGreen = !(currentlySelectedNode?.isGreen)!
+                    furnitureNode.color = (currentlySelectedNode?.color)!
+                }
+            }
+        }
     }
     
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard isConnected else { return }
         if let currentNode = currentlySelectedNode{
-        currentNode.position = touches.first!.location(in: self)
+            currentNode.position = touches.first!.location(in: self)
         }else{
             gameCamera?.run(SKAction.move(to: (touches.first?.location(in: gameCamera!))!, duration: 0.1))
             gameCamera?.run(SKAction.moveBy(x: (touches.first?.location(in: gameCamera!).x)! * -0.1, y: (touches.first?.location(in: gameCamera!).y)!*0.1, duration: 0.1))
@@ -184,17 +216,36 @@ class GameScene: SKScene {
     
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard isConnected else { return }
-        guard let table = currentlySelectedNode else { return }
-        if nodes(at: (touches.first?.location(in: self))!).contains(removeTableBin!){
-            firebaseMasterBranch.child((currentlySelectedNode?.id)!).removeValue()
+        guard let furniture = currentlySelectedNode else { return }
+        if nodes(at: (touches.first?.location(in: self))!).contains(removeFurnitureBin!){
+            firebaseMasterBranch.child((furniture.id)!).removeValue()
             firebaseMasterBranch.child("reload").setValue("reload")
-            currentlySelectedNode?.removeFromParent()
+            furniture.removeFromParent()
         }else{
-            table.colorBlendFactor = 1
-            let newTableBranch = firebaseMasterBranch.child((table.id)!)
-            newTableBranch.child("positionX").setValue(table.position.x)
-            newTableBranch.child("positionY").setValue(table.position.y)
-            newTableBranch.child("isGreen").setValue(table.isGreen)
+            
+            if let possibleTable = nodes(at: (touches.first?.location(in: self))!).last as? Furniture{
+                if (furniture.type == "CHAIR" && possibleTable.type != "TABLE"){
+                    if(furniture.parentTableID == nil){
+                        furniture.removeFromParent()
+                        return
+                    }
+                }else{
+                    if(possibleTable.type == "TABLE"){
+                        furniture.parentTableID = possibleTable.id
+                    }
+                }
+            }
+            
+            
+            furniture.colorBlendFactor = 1
+            let newFurnitureBranch = firebaseMasterBranch.child((furniture.id)!)
+            newFurnitureBranch.child("positionX").setValue(furniture.position.x)
+            newFurnitureBranch.child("positionY").setValue(furniture.position.y)
+            newFurnitureBranch.child("isGreen").setValue(furniture.isGreen)
+            newFurnitureBranch.child("furnitureType").setValue(furniture.type)
+            if(furniture.type == "CHAIR"){
+                newFurnitureBranch.child("parentTableID").setValue(furniture.parentTableID)
+            }
         }
     }
 }
@@ -210,6 +261,8 @@ struct DataPackage<T>{
     var isGreen: Bool?
     var position: Position<T>?
     var keyID: String?
+    var furnitureType: String?
+    var parentFurnitureID: String?
     
     func compressPosition() -> CGPoint{
         guard position?.x != nil, let x = position?.x as? CGFloat else { return CGPoint.zero }
@@ -227,18 +280,36 @@ class Position<T>{
     }
 }
 
-class Table : SKSpriteNode{
+
+class Furniture : SKSpriteNode{
     
     var isGreen: Bool?
     var id : String?
-    init(position: CGPoint, id: String){
+    var type: String?
+    var parentTableID: String?
+    
+    init(position: CGPoint, id: String, type: String){
         super.init(texture: SKTexture(imageNamed: "Square"), color: UIColor.clear, size: SKTexture(imageNamed: "Square").size())
-        self.size = CGSize(width: 50, height: 50)
+        switch(type){
+        case "TABLE":
+            self.size = CGSize(width: 50, height: 50)
+            self.zPosition = 1
+            break
+        case "CHAIR":
+            self.size = CGSize(width: 30, height: 30)
+            self.zPosition = 2
+            break
+        default:
+            break
+        }
         self.colorBlendFactor =  1
         self.isGreen = true
         self.id = id
+        self.type = type
         self.position = position
     }
+    
+    
     
     func toFlipState(){
         isGreen = !isGreen!
