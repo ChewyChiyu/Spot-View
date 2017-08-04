@@ -196,9 +196,9 @@ class GameScene: SKScene {
         guard currentlySelectedNode?.type == "TABLE" else { return }
         for allFurniture in self.children{
             if let furnitureNode = allFurniture as? Furniture{
-                if(furnitureNode.parentTableID == currentlySelectedNode?.id && furnitureNode.id != currentlySelectedNode?.id){
-                    furnitureNode.isGreen = !(currentlySelectedNode?.isGreen)!
-                    furnitureNode.color = (currentlySelectedNode?.color)!
+                if(furnitureNode.parentTableID == currentlySelectedNode?.id && furnitureNode != currentlySelectedNode){
+                    furnitureNode.isGreen = ((currentlySelectedNode?.isGreen)!)
+                    furnitureNode.color = (furnitureNode.isGreen)! ? UIColor.green : UIColor.red
                 }
             }
         }
@@ -245,6 +245,16 @@ class GameScene: SKScene {
             newFurnitureBranch.child("furnitureType").setValue(furniture.type)
             if(furniture.type == "CHAIR"){
                 newFurnitureBranch.child("parentTableID").setValue(furniture.parentTableID)
+            }
+            if(furniture.type == "TABLE"){
+                for possibleChair in self.children{
+                    if let chair = possibleChair as? Furniture{
+                        if(chair.parentTableID == currentlySelectedNode?.id){
+                            let chairBranch = firebaseMasterBranch.child(chair.id!)
+                            chairBranch.child("isGreen").setValue(chair.isGreen)
+                        }
+                    }
+                }
             }
         }
     }
