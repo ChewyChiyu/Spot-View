@@ -12,6 +12,8 @@ import Firebase
 import FirebaseDatabase
 class GameScene: SKScene {
     
+    //MARK: GLOBAL VARIABLES
+    
     var firebaseMasterBranch = Database.database().reference()
     
     var isConnected: Bool = false
@@ -24,12 +26,15 @@ class GameScene: SKScene {
     
     var currentlySelectedNode: Furniture?
     
+    
     override func didMove(to view: SKView) {
+        //MARK: Construct objects from editor
         addTableButton = self.childNode(withName: "addTable") as? Button
         addChairButton = self.childNode(withName: "addChair") as? Button
         removeFurnitureBin = self.childNode(withName: "removeFurniture") as? SKSpriteNode
         gameCamera = self.childNode(withName: "camera") as? SKCameraNode
         self.camera = gameCamera
+        //Starting observers in order of (Continuous Connection) -> (Once Load) -> (Continuous Push)
         observeFirebaseConnection{ [weak self] in
             self?.loadDataFromFirebase{ [weak self] in
                 self?.isLaunching = false
@@ -40,12 +45,14 @@ class GameScene: SKScene {
     }
     
     func loadDataFromFirebase(andOnCompletion completion:@escaping ()->()){
-        if !isConnected { completion() }
+        if !isConnected { completion() } //guard if not connected
+        //One time database observe
         firebaseMasterBranch.observeSingleEvent(of: .value, with: { snapshot in
-            if !snapshot.exists() { completion() }
+            if !snapshot.exists() { completion() } //guard if no data
             let enumerator = snapshot.children
             while let rest = enumerator.nextObject() as? DataSnapshot {
-                var reloadPackage = DataPackage<Any>()
+                //Iteration through all child branches in firebaseMasterBranch
+                var reloadPackage = DataPackage<Any>() //packing data
                 func fetchData(andOnCompletion completion:@escaping ()->()){
                     reloadPackage.position = Position(x: rest.childSnapshot(forPath: "positionX").value!, y: rest.childSnapshot(forPath: "positionY").value!)
                     reloadPackage.isGreen = rest.childSnapshot(forPath: "isGreen").value as? Bool
@@ -54,46 +61,55 @@ class GameScene: SKScene {
                     completion()
                 }
                 fetchData{
-                    let reloadedFurniture = Furniture(position: reloadPackage.compressPosition(), id: rest.key, type: reloadPackage.furnitureType!)
-                    reloadedFurniture.toFlipState()
-                    if(reloadedFurniture.type == "CHAIR"){
-                        reloadedFurniture.parentTableID = reloadPackage.parentFurnitureID
+                    //continue with this code after fetchData has gone to completion
+                    if self.validPackage(data: reloadPackage){ //checking if package has correct values
+                        
+                        //reloading data form reloadPackage
+                        let reloadedFurniture = Furniture(position: reloadPackage.compressPosition(), id: rest.key, type: reloadPackage.furnitureType!)
+                        reloadedFurniture.toFlipState()
+                        if(reloadedFurniture.type == "CHAIR"){
+                            //special instance if type "CHAIR"
+                            reloadedFurniture.parentTableID = reloadPackage.parentFurnitureID
+                        }
+                        //adding reloadedFurniture to scene
+                        self.addChild(reloadedFurniture)
                     }
-                    self.addChild(reloadedFurniture)
                 }
             }
+            //returning back flow control, proceed
             completion()
         })
         
     }
     
     func observeFirebaseConnection(andOnCompletion completion:@escaping ()->()){
+        //checking if connected to firebase at all times. Continuous observe
         let connectedRef = Database.database().reference(withPath: ".info/connected")
         connectedRef.observe(.value, with: { (connected) in
             if let boolean = connected.value as? Bool, boolean == true {
                 self.isConnected = true
                 self.reloadAllColors()
-                guard self.isLaunching else { return }
+                guard self.isLaunching else { return } //just launched guard
                 completion()
             } else {
                 self.isConnected = false
                 self.turnAllNodesGrey()
-                guard self.isLaunching else { return }
+                guard self.isLaunching else { return } //just launched guard
                 completion()
             }
         })
         
     }
     
-    func startObservers(){
-        guard isConnected else { return }
+    func startObservers(){ //continuous observe of firebase
+        guard isConnected else { return } //guard if not connected
         firebaseMasterBranch.observe(.value, with: {snapshot in
-            guard self.isConnected else { return }
-            guard snapshot.exists() else{ return }
+            guard self.isConnected else { return } //guard if not connected
+            guard snapshot.exists() else{ return } //guard if no data
             let enumerations = snapshot.children
-            var dataIDs = [String]()
+            var dataIDs = [String]() //Array of all object IDs
             while let rest = enumerations.nextObject() as? DataSnapshot{
-                var newPackage = DataPackage<Any>()
+                var newPackage = DataPackage<Any>() //loading datapackage
                 func fetchData(andOnCompletion completion:@escaping ()->()){
                     dataIDs.append(rest.key)
                     newPackage.keyID = rest.key
@@ -104,11 +120,14 @@ class GameScene: SKScene {
                     completion()
                 }
                 fetchData{
-                    if self.validPackage(data: newPackage){
+                    //running this code after data has been packaged
+                    if self.validPackage(data: newPackage){ //checking if package has correct values
                         var furnitureExists: Bool = false
-                        for childNode in self.children{
+                        for childNode in self.children{ //iteration through all children
                             let child = childNode as? Furniture
+                            //optional casting to Furniture
                             if(child?.id == newPackage.keyID){
+                                //instance of child is already on client, applying data from package into visible object
                                 furnitureExists = true
                                 if(child?.isGreen != newPackage.isGreen){
                                     child?.toFlipState()
@@ -121,6 +140,7 @@ class GameScene: SKScene {
                             }
                         }
                         if(!furnitureExists){
+                            //instance of child is not on client, applying new data from package onto new object
                             let newFurniture = Furniture(position: newPackage.compressPosition(), id: newPackage.keyID!, type: newPackage.furnitureType!)
                             newFurniture.toFlipState()
                             if(newFurniture.type == "CHAIR"){
@@ -131,6 +151,7 @@ class GameScene: SKScene {
                     }
                 }
             }
+            //checking for object removal if exists on client but not in dataIDs
             for childNode in self.children{
                 let child = childNode as? Furniture
                 var furnitureExists: Bool = false
@@ -147,15 +168,14 @@ class GameScene: SKScene {
     }
     
     func validPackage<T>(data: DataPackage<T>) -> Bool{
-        guard data.isGreen != nil else { return false }
-        guard data.position != nil else { return false }
-        guard data.keyID != nil else { return false }
-        guard data.furnitureType != nil else { return false }
+        //reutrns a bool checking if dataPackage has met the minimal requirements
+        guard data.furnitureType != nil && data.keyID != nil && data.position != nil && data.isGreen != nil else { return false }
         return true
     }
     
     
     func addButtonActions(){
+        //Button actions, closures
         addTableButton?.playAction = { [weak self] in
             if (self?.isConnected)! {
                 let table = Furniture(position: (self?.addTableButton?.position)!, id: "TABLE-\(String(Date().toMillis()))", type: "TABLE")
@@ -171,8 +191,9 @@ class GameScene: SKScene {
             }
         }
     }
-    
+    //function for isConnected = false
     func turnAllNodesGrey(){
+        //turn all children (Furniture) gray
         for child in self.children{
             if let tableNode = child as? Furniture{
                 tableNode.color = UIColor.gray
@@ -180,7 +201,9 @@ class GameScene: SKScene {
         }
     }
     
+    //function for isConnected = true
     func reloadAllColors(){
+        //refreshing colors
         for child in self.children{
             if let tableNode = child as? Furniture{
                 tableNode.color = (tableNode.isGreen)! ? UIColor.green : UIColor.red
@@ -188,24 +211,32 @@ class GameScene: SKScene {
         }
     }
     
+    //MARK: User Input
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard isConnected else { return }
+        guard isConnected else { return } //guard if connected to firebase
+        //applying SKNode object from point
         currentlySelectedNode = atPoint(touches.first!.location(in: self)) as? Furniture
-        currentlySelectedNode?.toFlipState()
-        guard currentlySelectedNode?.type == "TABLE" else { return }
-        for allFurniture in self.children{
-            if let furnitureNode = allFurniture as? Furniture{
+        currentlySelectedNode?.toFlipState() //flip furniture object if exists
+        guard currentlySelectedNode?.type == "TABLE" else { return } //proceed with code only if type "TABLE"
+        for allFurniture in self.children{ //iteration through all furniture objects
+            if let furnitureNode = allFurniture as? Furniture{ //checking if type table has any children of type "CHAIR", flip if true
                 if(furnitureNode.parentTableID == currentlySelectedNode?.id && furnitureNode != currentlySelectedNode){
                     furnitureNode.isGreen = ((currentlySelectedNode?.isGreen)!)
                     furnitureNode.color = (furnitureNode.isGreen)! ? UIColor.green : UIColor.red
+                    //removing and adding chair to table for snap movement
+                    let newPos = self.convert(furnitureNode.position, to: currentlySelectedNode!)
+                    furnitureNode.removeFromParent()
+                    currentlySelectedNode?.addChild(furnitureNode)
+                    furnitureNode.position = newPos
                 }
             }
         }
     }
     
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard isConnected else { return }
+        guard isConnected else { return } //guard for firebase connection
+        //if node is selected move it, if not move camera
         if let currentNode = currentlySelectedNode{
             currentNode.position = touches.first!.location(in: self)
         }else{
@@ -215,28 +246,47 @@ class GameScene: SKScene {
     }
     
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard isConnected else { return }
-        guard let furniture = currentlySelectedNode else { return }
+        guard isConnected else { return } //guard for firebase connection
+        guard let furniture = currentlySelectedNode else { return } //guard for invalid release
+        
+        //checking ot see if node was dragged into trash bin
         if nodes(at: (touches.first?.location(in: self))!).contains(removeFurnitureBin!){
             firebaseMasterBranch.child((furniture.id)!).removeValue()
             firebaseMasterBranch.child("reload").setValue("reload")
             furniture.removeFromParent()
         }else{
-            
+            //checking if node was chair, if yes remove if not initialized properly
             if let possibleTable = nodes(at: (touches.first?.location(in: self))!).last as? Furniture{
+                //checking to see if just dropped node is of type "CHAIR" onto "TABLE"
+
+                //checking if "TABLE" for removal and re adding of chairs onto scene
+                if (furniture.type == "TABLE"){
+                    for chairReload in furniture.children{
+                        if let chairNode = chairReload as? Furniture{
+                            let newPos = furniture.convert(chairNode.position, to: self)
+                            chairNode.removeFromParent()
+                            chairNode.position = newPos
+                            self.addChild(chairNode)
+                        }
+                    }
+                }
+                //let positionInScene = platformGroupNode.convertPoint(child.position, toNode: self)
+
                 if (furniture.type == "CHAIR" && possibleTable.type != "TABLE"){
                     if(furniture.parentTableID == nil){
+                        //remove node if not initialized properly
                         furniture.removeFromParent()
                         return
                     }
                 }else{
                     if(possibleTable.type == "TABLE"){
+                        //if chair exists, apply to new table
                         furniture.parentTableID = possibleTable.id
                     }
                 }
             }
             
-            
+            //applying new Data onto firebase
             furniture.colorBlendFactor = 1
             let newFurnitureBranch = firebaseMasterBranch.child((furniture.id)!)
             newFurnitureBranch.child("positionX").setValue(furniture.position.x)
@@ -246,12 +296,14 @@ class GameScene: SKScene {
             if(furniture.type == "CHAIR"){
                 newFurnitureBranch.child("parentTableID").setValue(furniture.parentTableID)
             }
-            if(furniture.type == "TABLE"){
+            if(furniture.type == "TABLE"){ //If type "TABLE", also load new information from chairs
                 for possibleChair in self.children{
                     if let chair = possibleChair as? Furniture{
                         if(chair.parentTableID == currentlySelectedNode?.id){
                             let chairBranch = firebaseMasterBranch.child(chair.id!)
                             chairBranch.child("isGreen").setValue(chair.isGreen)
+                            chairBranch.child("positionX").setValue(chair.position.x)
+                            chairBranch.child("positionY").setValue(chair.position.y)
                         }
                     }
                 }
@@ -260,28 +312,31 @@ class GameScene: SKScene {
     }
 }
 
-
-extension Date {
+//MARK: Date
+extension Date { //extention for Time Stamp
     func toMillis() -> Int64! {
         return Int64(self.timeIntervalSince1970 * 1000)
     }
 }
 
-struct DataPackage<T>{
+//MARK: DataPackage
+struct DataPackage<T>{ //Package Specific for Spot View
     var isGreen: Bool?
     var position: Position<T>?
     var keyID: String?
     var furnitureType: String?
     var parentFurnitureID: String?
     
-    func compressPosition() -> CGPoint{
+    func compressPosition() -> CGPoint{ //Translating generic position to CGPoint
         guard position?.x != nil, let x = position?.x as? CGFloat else { return CGPoint.zero }
         guard position?.y != nil, let y = position?.y as? CGFloat else { return CGPoint.zero }
         return CGPoint(x: x,y: y)
     }
 }
 
-class Position<T>{
+
+//MARK: Position
+class Position<T>{ //generic position class
     var x: T?
     var y: T?
     init(x: T, y: T){
@@ -290,8 +345,9 @@ class Position<T>{
     }
 }
 
+//MARK: Furniture
 
-class Furniture : SKSpriteNode{
+class Furniture : SKSpriteNode{ //Main Object of Spot View
     
     var isGreen: Bool?
     var id : String?
@@ -300,7 +356,7 @@ class Furniture : SKSpriteNode{
     
     init(position: CGPoint, id: String, type: String){
         super.init(texture: SKTexture(imageNamed: "Square"), color: UIColor.clear, size: SKTexture(imageNamed: "Square").size())
-        switch(type){
+        switch(type){ //specific to types
         case "TABLE":
             self.size = CGSize(width: 50, height: 50)
             self.zPosition = 1
@@ -321,7 +377,7 @@ class Furniture : SKSpriteNode{
     
     
     
-    func toFlipState(){
+    func toFlipState(){ //flipping both bool and color
         isGreen = !isGreen!
         self.color = (isGreen)! ? UIColor.green : UIColor.red
     }
