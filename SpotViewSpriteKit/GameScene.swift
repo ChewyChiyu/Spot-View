@@ -25,7 +25,7 @@ class GameScene: SKScene {
     var gameCamera: SKCameraNode?
     
     var currentlySelectedNode: Furniture?
-    
+    var moveTouch = CGPoint.zero
     
     override func didMove(to view: SKView) {
         //MARK: Construct objects from editor
@@ -215,6 +215,8 @@ class GameScene: SKScene {
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard isConnected else { return } //guard if connected to firebase
+        //assigning start touch variable
+        moveTouch = (touches.first?.location(in: self))!
         //applying SKNode object from point
         currentlySelectedNode = atPoint(touches.first!.location(in: self)) as? Furniture
         currentlySelectedNode?.toFlipState() //flip furniture object if exists
@@ -238,7 +240,11 @@ class GameScene: SKScene {
         guard isConnected else { return } //guard for firebase connection
         //if node is selected move it, if not move camera
         if let currentNode = currentlySelectedNode{
+            let currentTouch = touches.first?.location(in: self)
+            if(currentTouch != moveTouch){
             currentNode.position = touches.first!.location(in: self)
+            }
+            moveTouch = currentTouch!
         }else{
             gameCamera?.run(SKAction.move(to: (touches.first?.location(in: gameCamera!))!, duration: 0.1))
             gameCamera?.run(SKAction.moveBy(x: (touches.first?.location(in: gameCamera!).x)! * -0.1, y: (touches.first?.location(in: gameCamera!).y)!*0.1, duration: 0.1))
@@ -248,7 +254,6 @@ class GameScene: SKScene {
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard isConnected else { return } //guard for firebase connection
         guard let furniture = currentlySelectedNode else { return } //guard for invalid release
-        
         //checking ot see if node was dragged into trash bin
         if nodes(at: (touches.first?.location(in: self))!).contains(removeFurnitureBin!){
             firebaseMasterBranch.child((furniture.id)!).removeValue()
