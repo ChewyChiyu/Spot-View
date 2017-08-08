@@ -30,11 +30,11 @@ class GameScene: SKScene {
     
     override func didMove(to view: SKView) {
         //MARK: Construct objects from editor
-        selectMenu = self.childNode(withName: "SelectMenu") as? SKSpriteNode
+        gameCamera = self.childNode(withName: "camera") as? SKCameraNode
+        selectMenu = gameCamera?.childNode(withName: "SelectMenu") as? SKSpriteNode
         addTableButton = selectMenu?.childNode(withName: "addTable") as? Button
         addChairButton = selectMenu?.childNode(withName: "addChair") as? Button
-        removeFurnitureBin = self.childNode(withName: "removeFurniture") as? SKSpriteNode
-        gameCamera = self.childNode(withName: "camera") as? SKCameraNode
+        removeFurnitureBin = gameCamera?.childNode(withName: "removeFurniture") as? SKSpriteNode
         self.camera = gameCamera
         //Starting observers in order of (Continuous Connection) -> (Once Load) -> (Continuous Push)
         observeFirebaseConnection{ [weak self] in
@@ -246,7 +246,7 @@ class GameScene: SKScene {
         if let currentNode = currentlySelectedNode{
             let currentTouch = touches.first?.location(in: self)
             if(currentTouch != moveTouch){
-            currentNode.position = touches.first!.location(in: self)
+                currentNode.position = touches.first!.location(in: self)
             }
             moveTouch = currentTouch!
         }else{
@@ -258,6 +258,8 @@ class GameScene: SKScene {
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard isConnected else { return } //guard for firebase connection
         guard let furniture = currentlySelectedNode else { return } //guard for invalid release
+        
+        //Taking camera movement in account
         //checking ot see if node was dragged into trash bin
         if nodes(at: (touches.first?.location(in: self))!).contains(removeFurnitureBin!){
             firebaseMasterBranch.child((furniture.id)!).removeValue()
@@ -265,9 +267,17 @@ class GameScene: SKScene {
             furniture.removeFromParent()
         }else{
             //checking if node was chair, if yes remove if not initialized properly
-            if let possibleTable = nodes(at: (touches.first?.location(in: self))!).last as? Furniture{
+            var possibleTable : Furniture?
+            for i in  nodes(at: (touches.first?.location(in: self))!){
+                if let i2 = i as? Furniture{
+                    if(i2.type == "TABLE"){
+                        possibleTable = i2
+                        break
+                    }
+                }
+            }
+            if possibleTable != nil{
                 //checking to see if just dropped node is of type "CHAIR" onto "TABLE"
-
                 //checking if "TABLE" for removal and re adding of chairs onto scene
                 if (furniture.type == "TABLE"){
                     for chairReload in furniture.children{
@@ -279,19 +289,10 @@ class GameScene: SKScene {
                         }
                     }
                 }
-                //let positionInScene = platformGroupNode.convertPoint(child.position, toNode: self)
-
-                if (furniture.type == "CHAIR" && possibleTable.type != "TABLE"){
-                    if(furniture.parentTableID == nil){
-                        //remove node if not initialized properly
-                        furniture.removeFromParent()
-                        return
-                    }
-                }else{
-                    if(possibleTable.type == "TABLE"){
-                        //if chair exists, apply to new table
-                        furniture.parentTableID = possibleTable.id
-                    }
+                
+                if(possibleTable?.type == "TABLE"){
+                    //if chair exists, apply to new table
+                    furniture.parentTableID = possibleTable?.id
                 }
             }
             
