@@ -19,6 +19,7 @@ class GameScene: SKScene {
     var isConnected: Bool = false
     var isLaunching: Bool = true
     
+    var selectMenu : SKSpriteNode?
     var addTableButton: Button?
     var addChairButton: Button?
     var removeFurnitureBin: SKSpriteNode?
@@ -29,8 +30,9 @@ class GameScene: SKScene {
     
     override func didMove(to view: SKView) {
         //MARK: Construct objects from editor
-        addTableButton = self.childNode(withName: "addTable") as? Button
-        addChairButton = self.childNode(withName: "addChair") as? Button
+        selectMenu = self.childNode(withName: "SelectMenu") as? SKSpriteNode
+        addTableButton = selectMenu?.childNode(withName: "addTable") as? Button
+        addChairButton = selectMenu?.childNode(withName: "addChair") as? Button
         removeFurnitureBin = self.childNode(withName: "removeFurniture") as? SKSpriteNode
         gameCamera = self.childNode(withName: "camera") as? SKCameraNode
         self.camera = gameCamera
@@ -66,7 +68,7 @@ class GameScene: SKScene {
                         
                         //reloading data form reloadPackage
                         let reloadedFurniture = Furniture(position: reloadPackage.compressPosition(), id: rest.key, type: reloadPackage.furnitureType!)
-                        reloadedFurniture.toFlipState()
+                        reloadedFurniture.toFlipState(toGreen: reloadPackage.isGreen!)
                         if(reloadedFurniture.type == "CHAIR"){
                             //special instance if type "CHAIR"
                             reloadedFurniture.parentTableID = reloadPackage.parentFurnitureID
@@ -130,7 +132,7 @@ class GameScene: SKScene {
                                 //instance of child is already on client, applying data from package into visible object
                                 furnitureExists = true
                                 if(child?.isGreen != newPackage.isGreen){
-                                    child?.toFlipState()
+                                    child?.toFlipState(toGreen: newPackage.isGreen!)
                                 }
                                 child?.position = newPackage.compressPosition()
                                 child?.type = newPackage.furnitureType
@@ -142,7 +144,7 @@ class GameScene: SKScene {
                         if(!furnitureExists){
                             //instance of child is not on client, applying new data from package onto new object
                             let newFurniture = Furniture(position: newPackage.compressPosition(), id: newPackage.keyID!, type: newPackage.furnitureType!)
-                            newFurniture.toFlipState()
+                            newFurniture.toFlipState(toGreen: newPackage.isGreen!)
                             if(newFurniture.type == "CHAIR"){
                                 newFurniture.parentTableID = newPackage.parentFurnitureID
                             }
@@ -181,6 +183,7 @@ class GameScene: SKScene {
                 let table = Furniture(position: (self?.addTableButton?.position)!, id: "TABLE-\(String(Date().toMillis()))", type: "TABLE")
                 table.colorBlendFactor = 0
                 self?.addChild(table)
+                table.position = (self?.selectMenu?.position)!
             }
         }
         addChairButton?.playAction = { [weak self] in
@@ -188,6 +191,7 @@ class GameScene: SKScene {
                 let chair = Furniture(position: (self?.addChairButton?.position)!, id: "CHAIR-\(String(Date().toMillis()))", type: "CHAIR")
                 chair.colorBlendFactor = 0
                 self?.addChild(chair)
+                chair.position = (self?.selectMenu?.position)!
             }
         }
     }
@@ -219,7 +223,7 @@ class GameScene: SKScene {
         moveTouch = (touches.first?.location(in: self))!
         //applying SKNode object from point
         currentlySelectedNode = atPoint(touches.first!.location(in: self)) as? Furniture
-        currentlySelectedNode?.toFlipState() //flip furniture object if exists
+        currentlySelectedNode?.toFlipState(toGreen: !(currentlySelectedNode?.isGreen)!) //flip furniture object if exists
         guard currentlySelectedNode?.type == "TABLE" else { return } //proceed with code only if type "TABLE"
         for allFurniture in self.children{ //iteration through all furniture objects
             if let furnitureNode = allFurniture as? Furniture{ //checking if type table has any children of type "CHAIR", flip if true
@@ -360,7 +364,18 @@ class Furniture : SKSpriteNode{ //Main Object of Spot View
     var parentTableID: String?
     
     init(position: CGPoint, id: String, type: String){
-        super.init(texture: SKTexture(imageNamed: "Square"), color: UIColor.clear, size: SKTexture(imageNamed: "Square").size())
+        var selfTexture = SKTexture()
+        switch(type){
+        case "TABLE":
+            selfTexture = SKTexture(imageNamed: "icons8-Table-64")
+            break
+        case "CHAIR":
+            selfTexture = SKTexture(imageNamed: "icons8-Chair-64")
+            break
+        default:
+            break
+        }
+        super.init(texture: selfTexture, color: UIColor.clear, size: selfTexture.size())
         switch(type){ //specific to types
         case "TABLE":
             self.size = CGSize(width: 50, height: 50)
@@ -381,10 +396,17 @@ class Furniture : SKSpriteNode{ //Main Object of Spot View
     }
     
     
-    
-    func toFlipState(){ //flipping both bool and color
-        isGreen = !isGreen!
-        self.color = (isGreen)! ? UIColor.green : UIColor.red
+    func toFlipState(toGreen: Bool){ //flipping bool to assigned color
+        func green(){
+            isGreen = true
+            self.color = UIColor.green
+        }
+        
+        func red(){
+            isGreen = false
+            self.color = UIColor.red
+        }
+        _ = (toGreen) ? green() : red()
     }
     
     required init?(coder aDecoder: NSCoder) {
