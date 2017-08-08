@@ -267,18 +267,9 @@ class GameScene: SKScene {
             furniture.removeFromParent()
         }else{
             //checking if node was chair, if yes remove if not initialized properly
-            var possibleTable : Furniture?
-            for i in  nodes(at: (touches.first?.location(in: self))!){
-                if let i2 = i as? Furniture{
-                    if(i2.type == "TABLE"){
-                        possibleTable = i2
-                        break
-                    }
-                }
-            }
-            if possibleTable != nil{
-                //checking to see if just dropped node is of type "CHAIR" onto "TABLE"
-                //checking if "TABLE" for removal and re adding of chairs onto scene
+           
+                //touch ended on a table node
+                //dropping all chairs that were connected to Table (current)
                 if (furniture.type == "TABLE"){
                     for chairReload in furniture.children{
                         if let chairNode = chairReload as? Furniture{
@@ -290,9 +281,17 @@ class GameScene: SKScene {
                     }
                 }
                 
-                if(possibleTable?.type == "TABLE"){
-                    //if chair exists, apply to new table
-                    furniture.parentTableID = possibleTable?.id
+            if(furniture.type == "CHAIR"){
+                var seakForTable : Furniture?
+                for possibleFurniture in nodes(at: (touches.first?.location(in: self))!){
+                    if let possibleTable = possibleFurniture as? Furniture{
+                        if(possibleTable.type == "TABLE"){
+                            seakForTable = possibleTable
+                        }
+                    }
+                }
+                if seakForTable != nil{
+                    furniture.parentTableID = seakForTable?.id
                 }
             }
             
